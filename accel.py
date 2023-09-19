@@ -1,6 +1,6 @@
 import machine
 from time import sleep
-import ustruct
+import struct
 sda=machine.Pin(16)
 scl=machine.Pin(17)
 i2c=machine.I2C(0,sda=sda, scl=scl, freq=400000)
@@ -36,15 +36,38 @@ INT1_CTRL_val = 0x01
 i2c.writeto_mem(lsm6ds33_address, INT1_CTRL_REG, bytes([INT1_CTRL_val]))
 
 
-STATUS_REG = 0x1E
-SENSITIVITY_2G = 1.0 / 256  # (g/LSB)
-EARTH_GRAVITY = 9.80665     # Earth's gravity in [m/s^2]
+def calibration(i2c, lsm6ds33_address, scale_factor):
+    raw_data = i2c.readfrom_mem(lsm6ds33_address, 0x28, 6) # Output data, each axis takes up 16 bits or 2 bytes
+    x_raw, y_raw, z_raw = struct.unpack('<hhh', raw_data) # Unpack binary data form
+    x_acc = round(x_raw * scale_factor, 1) # Due to the direction chip is facing and the gravity
+    y_acc = round(y_raw * scale_factor, 1)# Make the data into unit of g
+    z_acc = round(z_raw * scale_factor, 1)
+    return [x_acc, y_acc, z_acc]
+
+
+scale_factor = (2.0 * 2) / (2 ** 15)  # g/LSB
+cal_axis = calibration(i2c, lsm6ds33_address, scale_factor)
+x_cal = cal_axis[0]
+y_cal = cal_axis[1]
+z_cal = cal_axis[2]
+x_dis = 0
+y_dis = 0
+z_dis = 0
 while True:
-    val = i2c.readfrom_mem(lsm6ds33_address, STATUS_REG, 1) # Read 1 byte
-    # Extract the 0th bit
-    bit_0 = (val[0] >> 0) & 1
-    if bit_0: # If new sets of data available
-        data = i2c.readfrom_mem(lsm6ds33_address, 0x28, 6) # Output data, each axis takes up 16 bits or 2 bytes
-        print("Accel data:" + str(data))
+    raw_data = i2c.readfrom_mem(lsm6ds33_address, 0x28, 6) # Output data, each axis takes up 16 bits or 2 bytes
+    x_raw, y_raw, z_raw = struct.unpack('<hhh', raw_data) # Unpack binary data form
+    # Gives us true acceleration
+    x_acc = round(x_raw * scale_factor, 1) - x_cal 
+    y_acc = round(y_raw * scale_factor, 1) - y_cal
+    z_acc = round(z_raw * scale_factor, 1) - z_cal
+    x_dis += round(0.5 * (x_acc * 9.81), 2) # t^2 doesn't matter because we refresh at t = 1
+    y_dis += round(0.5 * (y_acc * 9.81), 2)
+    z_dis += round(0.5 * (z_acc * 9.81), 2)
+    print("X: " + str(x_dis) + " meters")
+    print("Y: " + str(y_dis) + " meters")
+    print("Z: " + str(z_dis) + " meters")
+        # We find distance using d = 1/2at^2
     sleep(1)
     
+# Turn raw data into some unit
+# Deal with noise, sensor offset, and gravity to make the measurement as accurate as possible
