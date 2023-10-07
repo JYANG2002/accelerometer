@@ -3,7 +3,6 @@ from time import sleep
 import struct
 import math
 
-
 def byteUnpack(low, high):
     low = int.from_bytes(low, 'big')
     high = int.from_bytes(high, 'big')
@@ -70,8 +69,8 @@ calibrated_data = calibration(i2c)
 x = 0
 y = 0
 z = 0
-omega_c = 0.15 * 5 # just a starting point, change later
-T = 0.5 # duration
+omega_c = 0.15 * 4 # just a starting point, change later
+T = 0.2 # duration
 # Set all params to 0
 x_km1 = 0
 xu_km1 = 0
@@ -80,31 +79,73 @@ yu_km1 = 0
 z_km1 = 0
 zu_km1 = 0
 
+# Useful info for calculating distance
+sign_bit = 0 # 0 positive, 1 negative
+start_y = 0 # If there are changes in the y axis
+accel_y = 0
+distance_y = 0
+count = 0
+print("Start")
 while True:
     data = readAccelerometer(i2c)
     # Round to hundredths
     result = [round(a - b, 2) for a, b in zip(data, calibrated_data)] # Subtract val with calibration
-    #x = (1-omega_c*T)*x_km1 + omega_c*T*xu_km1; 
-    #y = (1-omega_c*T)*y_km1 + omega_c*T*yu_km1; 
-    #z = (1-omega_c*T)*z_km1 + omega_c*T*zu_km1;
-    x = result[0]
-    y = result[1]
-    z = result[2]
-    # set previous unfiltered val
-    #xu_km1 = result[0]
-    #yu_km1 = result[1]
-    #zu_km1 = result[2]
-    # set previous filtered val
-    #x_km1 = x
-    #y_km1 = y
-    #z_km1 = z
+    x = (1-omega_c*T)*x_km1 + omega_c*T*xu_km1; 
+    y = (1-omega_c*T)*y_km1 + omega_c*T*yu_km1; 
+    z = (1-omega_c*T)*z_km1 + omega_c*T*zu_km1;
     
-    # Print results
+    # set previous unfiltered val
+    xu_km1 = result[0]
+    yu_km1 = result[1]
+    zu_km1 = result[2]
+    # set previous filtered val
+    x_km1 = x
+    y_km1 = y
+    z_km1 = z
+    
+    # For positive direction on Y
+    if abs(y) > 0.1 and start_y == 0:
+        if y < 0: # If negative
+            sign_bit = 1
+        accel_y = y # Grab current acceleration to do double integral
+        start_y = 1  
+        
+    if start_y: # If we are counting
+        count += 1
+        if abs(y) < 0.1 or (y < 0 and sign_bit == 0) or (y > 0 and sign_bit == 1): # if body stop or acceleration is suddenly opposite
+            distance_cal = 1/2*accel_y * (count * 0.1)**2# d = 1/2at^2
+            distance_y += distance_cal
+            print("Time: " + str(count * 0.1))
+            # reset
+            sign_bit = 0
+            start_y = 0
+            count = 0
+            print("Distance calculated: " + str(distance_cal))
+            print("Distance: " + str(distance_y))
+            sleep(5)
+    '''
+    Pusedo code:
+    add sign
+    if one of the axis experience abs(acceleration) > 0.2:
+        start timer
+        get the first acceleration it experiences
+    if timer on, and the axis acceleration < 0.2:
+        timer off
+    
+    if timer != 0:
+        do the integral equations using time and 0 as bound with the acceleration as your integrand
+        update distance
+    ** remember this has to work with all 3 axis, so for now just test the y
+    
+    '''
+    print("Y:", "{:.2f}".format(y))
+    # Print result
+    '''
     print("X:", "{:.2f}".format(x), \
           "| Y:", "{:.2f}".format(y), \
           "| Z:", "{:.2f}".format(z))
-    
-    sleep(0.2)
+    '''
+    sleep(0.1)
     
     
     
