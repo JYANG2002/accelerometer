@@ -3,7 +3,6 @@ from time import sleep
 import struct
 import math
 
-
 def byteUnpack(low, high):
     low = int.from_bytes(low, 'big')
     high = int.from_bytes(high, 'big')
@@ -70,8 +69,8 @@ calibrated_data = calibration(i2c)
 x = 0
 y = 0
 z = 0
-omega_c = 0.15 * 5 # just a starting point, change later
-T = 0.5 # duration
+omega_c = 0.15 * 8 # just a starting point, change later
+T = 0.1 # duration
 # Set all params to 0
 x_km1 = 0
 xu_km1 = 0
@@ -79,6 +78,14 @@ y_km1 = 0
 yu_km1 = 0
 z_km1 = 0
 zu_km1 = 0
+
+# Useful info for calculating distance
+smooth_bit = 0 # After it experiences acceleration it requires some time for filter to smooth out
+sign_bit = 0 # 0 positive, 1 negative
+start_y = 0 # If there are changes in the y axis
+accel_y = [] # Grab the acceleration it experiences
+distance_y = 0
+count = 0 # used for time intervals
 
 while True:
     data = readAccelerometer(i2c)
@@ -97,26 +104,43 @@ while True:
     y_km1 = y
     z_km1 = z
     
+    if abs(y) < 0.2: # If data is smooth we can accurately calculate distance
+        smooth_bit = 1
+        
+    if smooth_bit:
+        # For positive direction on Y
+        if abs(y) > 0.2 and start_y == 0:
+            if y < 0: # If negative
+                sign_bit = 1
+            accel_y.append(y) # Grab current acceleration to do double integral
+            start_y = 1  
+            
+        if start_y: # If we are counting
+            count += 1
+            accel_y.append(y)
+            if abs(y) < 0.2 or (y < 0 and sign_bit == 0) or (y > 0 and sign_bit == 1): # if body stop or acceleration is suddenly opposite
+                avg_y = sum(accel_y) / len(accel_y) 
+                # d = 1/2at^2
+                distance_cal = 1/2*avg_y * (count * 0.1)**2 * 6# Multipled by 6 based on data collected and make it as close to meters
+                distance_y += distance_cal
+                print("Time: " + str(count * 0.1))
+                # reset
+                sign_bit = 0
+                start_y = 0
+                count = 0
+                smooth_bit = 0
+                accel_y.clear()
+                print("Distance calculated: " + str(distance_cal))
+                print("Distance: " + str(distance_y))
+                sleep(5)
+
+    print("Y:", "{:.2f}".format(y))
+    # Print result
     '''
-    Pusedo code:
-    if one of the axis experience abs(acceleration) > 0.2:
-        start timer
-        get the first acceleration it experiences
-    if timer on, and the axis acceleration < 0.2:
-        timer off
-    
-    if timer != 0:
-        do the integral equations using time and 0 as bound with the acceleration as your integrand
-        update distance
-    ** remember this has to work with all 3 axis, so for now just test the y
-    
-    '''
-    
-    # Print results
     print("X:", "{:.2f}".format(x), \
           "| Y:", "{:.2f}".format(y), \
           "| Z:", "{:.2f}".format(z))
-    
+    '''
     sleep(0.1)
     
     
