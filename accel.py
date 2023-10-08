@@ -81,17 +81,31 @@ zu_km1 = 0
 
 # Useful info for calculating distance
 smooth_bit = 0 # After it experiences acceleration it requires some time for filter to smooth out
-sign_bit = 0 # 0 positive, 1 negative
+# x axis
+sign_bit_x = 0 # 0 positive, 1 negative
+start_x = 0 # If there are changes in the y axis
+accel_x = [] # Grab the acceleration it experiences
+distance_x = 0
+count_x = 0 # used for time intervals
+# y axis
+sign_bit_y = 0 # 0 positive, 1 negative
 start_y = 0 # If there are changes in the y axis
 accel_y = [] # Grab the acceleration it experiences
 distance_y = 0
-count = 0 # used for time intervals
+count_y = 0 # used for time intervals
+#z axis
+sign_bit_z = 0 # 0 positive, 1 negative
+start_z = 0 # If there are changes in the y axis
+accel_z = [] # Grab the acceleration it experiences
+distance_z = 0
+count_z = 0 # used for time intervals
+
 
 while True:
     data = readAccelerometer(i2c)
     # Round to hundredths
     result = [round(a - b, 2) for a, b in zip(data, calibrated_data)] # Subtract val with calibration
-    x = (1-omega_c*T)*x_km1 + omega_c*T*xu_km1; 
+    x = (1-omega_c*T)*x_km1 + omega_c*T*xu_km1; # Our acceleration for the axis
     y = (1-omega_c*T)*y_km1 + omega_c*T*yu_km1; 
     z = (1-omega_c*T)*z_km1 + omega_c*T*zu_km1;
     
@@ -104,37 +118,91 @@ while True:
     y_km1 = y
     z_km1 = z
     
-    if abs(y) < 0.2: # If data is smooth we can accurately calculate distance
+    if abs(z) < 0.2 and abs(y) < 0.2 and abs(z) < 0.2: # If data is smooth we can accurately calculate distance
         smooth_bit = 1
         
     if smooth_bit:
-        # For positive direction on Y
+        # For direction on X
+        if abs(x) > 0.2 and start_x == 0:
+            if x < 0: # If negative
+                sign_bit_x = 1
+            accel_x.append(x) # Grab current acceleration to do double integral
+            start_x = 1  
+            
+        if start_x: # If we are counting
+            count_x += 1
+            accel_x.append(x)
+            if abs(x) < 0.2 or (x < 0 and sign_bit_x == 0) or (x > 0 and sign_bit_x == 1): # if body stop or acceleration is suddenly opposite
+                avg_x = sum(accel_x) / len(accel_x) 
+                # d = 1/2at^2
+                distance_cal = 1/2*avg_x * (count_x * 0.1)**2 * 6# Multipled by 6 based on data collected and make it as close to meters
+                distance_x += distance_cal
+                print("Time: " + str(count_x * 0.1))
+                # reset
+                sign_bit_x = 0
+                start_x = 0
+                count_x = 0
+                smooth_bit = 0
+                accel_x.clear()
+                print("Distance calculated X: " + str(distance_cal))
+                print("Distance X: " + str(distance_x))
+                sleep(5)
+        
+        # For direction on Y
         if abs(y) > 0.2 and start_y == 0:
             if y < 0: # If negative
-                sign_bit = 1
+                sign_bit_y = 1
             accel_y.append(y) # Grab current acceleration to do double integral
             start_y = 1  
             
         if start_y: # If we are counting
-            count += 1
+            count_y += 1
             accel_y.append(y)
-            if abs(y) < 0.2 or (y < 0 and sign_bit == 0) or (y > 0 and sign_bit == 1): # if body stop or acceleration is suddenly opposite
+            if abs(y) < 0.2 or (y < 0 and sign_bit_y == 0) or (y > 0 and sign_bit_y == 1): # if body stop or acceleration is suddenly opposite
                 avg_y = sum(accel_y) / len(accel_y) 
                 # d = 1/2at^2
-                distance_cal = 1/2*avg_y * (count * 0.1)**2 * 6# Multipled by 6 based on data collected and make it as close to meters
+                distance_cal = 1/2*avg_y * (count_y * 0.1)**2 * 6# Multipled by 6 based on data collected and make it as close to meters
                 distance_y += distance_cal
-                print("Time: " + str(count * 0.1))
+                print("Time: " + str(count_y * 0.1))
                 # reset
-                sign_bit = 0
+                sign_bit_y = 0
                 start_y = 0
-                count = 0
+                count_y = 0
                 smooth_bit = 0
                 accel_y.clear()
-                print("Distance calculated: " + str(distance_cal))
-                print("Distance: " + str(distance_y))
+                print("Distance calculated Y: " + str(distance_cal))
+                print("Distance Y: " + str(distance_y))
                 sleep(5)
 
-    print("Y:", "{:.2f}".format(y))
+        # For direction on Z
+        if abs(z) > 0.2 and start_z == 0:
+            if z < 0: # If negative
+                sign_bit_z = 1
+            accel_z.append(z) # Grab current acceleration to do double integral
+            start_z = 1  
+            
+        if start_z: # If we are counting
+            count_z += 1
+            accel_z.append(z)
+            if abs(z) < 0.2 or (z < 0 and sign_bit_z == 0) or (z > 0 and sign_bit_z == 1): # if body stop or acceleration is suddenly opposite
+                avg_z = sum(accel_z) / len(accel_z) 
+                # d = 1/2at^2
+                distance_cal = 1/2*avg_z * (count_z * 0.1)**2 * 6# Multipled by 6 based on data collected and make it as close to meters
+                distance_z += distance_cal
+                print("Time: " + str(count_z * 0.1))
+                # reset
+                sign_bit_z = 0
+                start_z = 0
+                count_z = 0
+                smooth_bit = 0
+                accel_z.clear()
+                print("Distance calculated Z: " + str(distance_cal))
+                print("Distance Z: " + str(distance_z))
+                sleep(5)
+
+
+
+    print("X:", "{:.2f}".format(x))
     # Print result
     '''
     print("X:", "{:.2f}".format(x), \
@@ -142,7 +210,3 @@ while True:
           "| Z:", "{:.2f}".format(z))
     '''
     sleep(0.1)
-    
-    
-    
-    
